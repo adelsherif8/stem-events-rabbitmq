@@ -142,6 +142,14 @@ async def cmd_purge(settings: Settings) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except aio_pika.exceptions.AMQPConnectionError as exc:
+        print(f"cannot reach RabbitMQ ({Settings.from_env().amqp_url}): {exc}", file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="stem_events.dlq", description="Inspect and replay the DLQ")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("stats", help="message counts for main, retry and dead-letter queues")

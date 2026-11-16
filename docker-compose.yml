@@ -1,0 +1,54 @@
+# Self-contained demo: broker + consumer + a publisher that simulates Stem SaaS
+# Celery job events. Does not need the stem-saas repo.
+#   docker compose up --build
+#   management UI: http://localhost:15672  (stem / stem)
+services:
+  rabbitmq:
+    image: rabbitmq:4.4-management
+    hostname: rabbitmq  # node name (and so the data dir) must be stable across restarts
+    environment:
+      RABBITMQ_DEFAULT_USER: stem
+      RABBITMQ_DEFAULT_PASS: stem
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  consumer:
+    build: .
+    command: python -m stem_events.consumer
+    environment:
+      AMQP_URL: amqp://stem:stem@rabbitmq:5672/
+      STORE_PATH: /data/events.sqlite3
+      RETRY_DELAYS_MS: "1000,5000,25000"
+      DELIVERY_LIMIT: "5"
+      NOTIFIER_FAIL_RATE: "0.3"  # demo: 30% of notifications fail transiently
+      LOG_FORMAT: json
+    volumes:
+      - consumer-data:/data
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  publisher:
+    build: .
+    command: >
+      python -m stem_events.publisher --jobs 20 --interval 0.5 --bad-every 7 --dup-every 5 --seed 42
+    environment:
+      AMQP_URL: amqp://stem:stem@rabbitmq:5672/
+      LOG_FORMAT: json
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  rabbitmq-data:
+  consumer-data:
